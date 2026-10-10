@@ -1,5 +1,5 @@
 cd ~/webbox
-cat > setup.py << 'EOF'
+cat > setup.py << 'PYEOF'
 from setuptools import setup, find_packages
 
 setup(
@@ -21,4 +21,4 @@ setup(
     },
     python_requires=">=3.8",
 )
-EOF
+PYEOF
