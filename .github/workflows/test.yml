@@ -1,0 +1,42 @@
+name: Test webbox
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Syntax check
+        run: |
+          python -m py_compile webbox/core.py
+          python -m py_compile webbox/cli.py
+          python -m py_compile webbox/__init__.py
+
+      - name: Import test
+        run: |
+          python -c "from webbox.core import WebBox; print('OK')"
+
+      - name: Help test
+        run: |
+          python webbox/cli.py --help
+          python webbox/cli.py --version
