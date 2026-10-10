@@ -22,7 +22,6 @@ R = "\033[91m"; G = "\033[92m"; Y = "\033[93m"
 B = "\033[94m"; C = "\033[96m"; W = "\033[0m"
 BOLD = "\033[1m"
 
-
 class WebBox:
     def __init__(self, url, max_depth=3, max_pages=100, delay=0.3, output=None):
         if not url.startswith(("http://", "https://")):
