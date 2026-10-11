@@ -1,4 +1,4 @@
-cat > ~/webbox/webbox/__init__.py << 'EOF'
+cat > webbox/__init__.py << 'ENDOFFILE'
 """webbox - سحب المواقع بكل ملفاتها"""
-__version__ = "2.0.0"
-EOF
+__version__ = "2.1.0"
+ENDOFFILE
