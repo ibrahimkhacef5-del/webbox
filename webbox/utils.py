@@ -1,4 +1,4 @@
-cat > ~/webbox/webbox/utils.py << 'PYEOF'
+cat > webbox/utils.py << 'ENDOFFILE'
 """أدوات مساعدة"""
 import os
 import re
@@ -6,7 +6,9 @@ import hashlib
 from urllib.parse import urlparse, unquote
 
 
-# ===== امتدادات الملفات =====
+# ═══════════════════════════════════════════════════════
+# امتدادات الملفات المدعومة
+# ═══════════════════════════════════════════════════════
 ASSET_EXTENSIONS = {
     # صور
     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico',
@@ -35,7 +37,9 @@ ASSET_EXTENSIONS = {
 }
 
 
-# ===== ألوان =====
+# ═══════════════════════════════════════════════════════
+# ألوان الطرفية
+# ═══════════════════════════════════════════════════════
 class C:
     RED = "\033[91m"
     GREEN = "\033[92m"
@@ -45,6 +49,33 @@ class C:
     MAGENTA = "\033[95m"
     WHITE = "\033[0m"
     BOLD = "\033[1m"
+    DIM = "\033[2m"
+
+
+# ═══════════════════════════════════════════════════════
+# كشف SPA (React/Vue/Angular)
+# ═══════════════════════════════════════════════════════
+SPA_INDICATORS = [
+    '<div id="root"',
+    '<div id="app"',
+    '<div id="__next"',
+    'window.__NUXT__',
+    'window.__INITIAL_STATE__',
+    'data-reactroot',
+    'ng-version=',
+    '_ngcontent',
+]
+
+
+def is_spa(html: str) -> bool:
+    """فحص إذا كانت الصفحة SPA"""
+    if not html:
+        return False
+    sample = html[:5000].lower()
+    for indicator in SPA_INDICATORS:
+        if indicator.lower() in sample:
+            return True
+    return False
 
 
 def is_asset(url: str) -> bool:
@@ -60,7 +91,7 @@ def is_asset(url: str) -> bool:
         if path.endswith(ext):
             return True
 
-    # إذا فيه نقطة في آخر جزء
+    # فحص إذا كان فيه نقطة في آخر جزء
     last = path.rsplit("/", 1)[-1]
     if "." in last and not last.startswith("."):
         return True
@@ -68,8 +99,19 @@ def is_asset(url: str) -> bool:
     return False
 
 
+def clean_url(url: str) -> str:
+    """تنظيف الرابط من fragment و query غير ضرورية"""
+    # احذف fragment (#)
+    if "#" in url:
+        url = url.split("#")[0]
+    return url
+
+
 def safe_path(url: str, output_dir: str) -> str:
     """تحويل URL إلى مسار آمن محلي"""
+    # احذف fragment أولاً
+    url = clean_url(url)
+
     parsed = urlparse(url)
     path = parsed.path or "/"
 
@@ -116,6 +158,7 @@ def safe_path(url: str, output_dir: str) -> str:
 
 def get_extension(url: str) -> str:
     """استخراج الامتداد"""
+    url = clean_url(url)
     path = urlparse(url).path
     ext = os.path.splitext(path)[1].lower()
     return ext or ".bin"
@@ -130,4 +173,4 @@ def should_skip(url: str) -> bool:
     if not url.startswith(("http://", "https://")):
         return True
     return False
-PYEOF
+ENDOFFILE
