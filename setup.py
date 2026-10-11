@@ -1,9 +1,9 @@
-cat > ~/webbox/setup.py << 'PYEOF'
+cat > setup.py << 'ENDOFFILE'
 from setuptools import setup, find_packages
 
 setup(
     name="webbox",
-    version="2.0.0",
+    version="2.1.0",
     description="Site downloader for Termux & Linux",
     author="ibrahimkhacef5-del",
     packages=find_packages(),
@@ -19,4 +19,4 @@ setup(
     },
     python_requires=">=3.8",
 )
-PYEOF
+ENDOFFILE
