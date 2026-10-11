@@ -1,4 +1,4 @@
-cat > ~/webbox/webbox/core.py << 'PYEOF'
+cat > webbox/core.py << 'ENDOFFILE'
 #!/usr/bin/env python3
 """webbox - سحب المواقع بكل ملفاتها"""
 import os
@@ -14,23 +14,28 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .utils import (
-    C, is_asset, safe_path, get_extension, should_skip
+    C, is_asset, is_spa, safe_path, get_extension,
+    should_skip, clean_url
 )
 
 
 class WebBox:
-    """المدير الرئيسي"""
+    """أداة سحب المواقع"""
 
     def __init__(self, url, max_depth=3, max_pages=100,
                  delay=0.3, output=None, user_agent=None):
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
 
+        # نظّف الرابط
+        url = clean_url(url)
+
         self.start_url = url
         self.base_domain = urlparse(url).netloc
         self.max_depth = max_depth
         self.max_pages = max_pages
         self.delay = delay
+        self.is_spa_site = False
 
         # مجلد الحفظ
         safe_name = re.sub(r'[^\w\-.]', '_', self.base_domain)
@@ -38,7 +43,7 @@ class WebBox:
             self.output_dir = os.path.abspath(output)
         else:
             self.output_dir = os.path.join(
-                os.path.expanduser("~"), "downloads", safe_name
+                "/storage/emulated/0/webbox", safe_name
             )
 
         # الجلسة
@@ -66,19 +71,27 @@ class WebBox:
         self.failed = []
         self.assets = []
 
-    # ===== طباعة =====
+    # ═══════════════════════════════════════════════════
+    # طباعة
+    # ═══════════════════════════════════════════════════
     def log(self, msg, color=C.WHITE):
         print(f"{color}{msg}{C.WHITE}")
 
-    # ===== فحص النطاق =====
+    # ═══════════════════════════════════════════════════
+    # فحص النطاق
+    # ═══════════════════════════════════════════════════
     def _is_same_domain(self, url):
         try:
             return urlparse(url).netloc == self.base_domain
         except Exception:
             return False
 
-    # ===== سحب ملف =====
+    # ═══════════════════════════════════════════════════
+    # سحب ملف
+    # ═══════════════════════════════════════════════════
     def _download_asset(self, url):
+        url = clean_url(url)
+
         if url in self.visited:
             return
         self.visited.add(url)
@@ -106,23 +119,31 @@ class WebBox:
             })
 
             ext = get_extension(url)
-            self.log(f"  {C.GREEN}✓{C.WHITE} [{size//1024}KB] {ext} {url[:60]}")
+            self.log(f"  {C.GREEN}✓{C.WHITE} [{size//1024}KB] "
+                     f"{ext:<8} {url[:55]}")
 
             time.sleep(self.delay)
 
         except Exception as e:
             self.failed.append((url, str(e)[:50]))
-            self.log(f"  {C.RED}✗{C.WHITE} {url[:60]} — {str(e)[:40]}")
+            self.log(f"  {C.RED}✗{C.WHITE} {url[:55]} — {str(e)[:35]}")
 
-    # ===== استخراج الأصول من HTML =====
+    # ═══════════════════════════════════════════════════
+    # استخراج الأصول من HTML
+    # ═══════════════════════════════════════════════════
     def _extract_assets(self, url, html):
-        soup = BeautifulSoup(html, "lxml")
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+        except Exception as e:
+            self.log(f"{C.YELLOW}⚠ فشل تحليل HTML: {e}{C.WHITE}")
+            return set()
+
         assets = set()
 
-        # CSS
+        # CSS + preload
         for link in soup.find_all("link", href=True):
             rel = " ".join(link.get("rel", [])).lower()
-            if "stylesheet" in rel or "preload" in rel:
+            if any(k in rel for k in ["stylesheet", "preload", "prefetch"]):
                 assets.add(urljoin(url, link["href"]))
 
         # JS
@@ -159,7 +180,9 @@ class WebBox:
 
         # iframe
         for iframe in soup.find_all("iframe", src=True):
-            assets.add(urljoin(url, iframe["src"]))
+            src = iframe["src"]
+            if not src.startswith(("about:", "javascript:")):
+                assets.add(urljoin(url, src))
 
         # embed/object
         for tag in soup.find_all(["embed", "object"]):
@@ -175,21 +198,28 @@ class WebBox:
 
         return assets
 
-    # ===== استخراج روابط داخلية =====
+    # ═══════════════════════════════════════════════════
+    # استخراج الروابط الداخلية
+    # ═══════════════════════════════════════════════════
     def _extract_links(self, url, html, depth):
         if depth >= self.max_depth:
             return []
 
-        soup = BeautifulSoup(html, "lxml")
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+        except Exception:
+            return []
+
         links = []
 
         for a in soup.find_all("a", href=True):
             href = a["href"]
             if should_skip(href):
                 continue
-            full = urljoin(url, href)
 
-            # تخطي الملفات (نزلناها فوق)
+            full = clean_url(urljoin(url, href))
+
+            # تخطي الملفات
             if is_asset(full):
                 continue
 
@@ -200,8 +230,12 @@ class WebBox:
 
         return links
 
-    # ===== سحب صفحة =====
+    # ═══════════════════════════════════════════════════
+    # سحب صفحة
+    # ═══════════════════════════════════════════════════
     def _crawl(self, url, depth):
+        url = clean_url(url)
+
         if url in self.visited or len(self.visited) >= self.max_pages:
             return
         self.visited.add(url)
@@ -210,7 +244,7 @@ class WebBox:
             r = self.session.get(url, timeout=20)
             if r.status_code != 200:
                 self.failed.append((url, r.status_code))
-                self.log(f"{C.RED}✗{C.WHITE} [{r.status_code}] {url[:70]}")
+                self.log(f"{C.RED}✗{C.WHITE} [{r.status_code}] {url[:65]}")
                 return
 
             content_type = r.headers.get("Content-Type", "").lower()
@@ -227,8 +261,15 @@ class WebBox:
                     "url": url, "path": path, "size": size
                 })
                 indent = "  " * depth
-                self.log(f"{indent}{C.GREEN}✓{C.WHITE} "
-                         f"[HTML {size//1024}KB] {url[:70]}")
+
+                # فحص SPA
+                if is_spa(r.text):
+                    self.is_spa_site = True
+                    self.log(f"{indent}{C.YELLOW}⚠ SPA (React/Vue) "
+                             f"{size//1024}KB {url[:55]}{C.WHITE}")
+                else:
+                    self.log(f"{indent}{C.GREEN}✓{C.WHITE} "
+                             f"[HTML {size//1024}KB] {url[:60]}")
 
                 # سحب الأصول
                 assets = self._extract_assets(url, r.text)
@@ -236,10 +277,11 @@ class WebBox:
                     self._download_asset(asset_url)
 
                 # سحب الصفحات الداخلية
-                links = self._extract_links(url, r.text, depth)
-                for next_url in links:
-                    time.sleep(self.delay)
-                    self._crawl(next_url, depth + 1)
+                if not is_spa(r.text):
+                    links = self._extract_links(url, r.text, depth)
+                    for next_url in links:
+                        time.sleep(self.delay)
+                        self._crawl(next_url, depth + 1)
 
             # ملف عادي
             else:
@@ -253,22 +295,24 @@ class WebBox:
                 self.assets.append({
                     "url": url, "path": path, "size": size
                 })
-                self.log(f"  {C.GREEN}✓{C.WHITE} "
-                         f"[{size//1024}KB] {ext} {url[:60]}")
+                self.log(f"  {C.GREEN}✓{C.WHITE} [{size//1024}KB] "
+                         f"{ext:<8} {url[:55]}")
 
         except Exception as e:
             self.failed.append((url, str(e)[:50]))
-            self.log(f"{C.RED}✗{C.WHITE} {url[:70]} — {str(e)[:40]}")
+            self.log(f"{C.RED}✗{C.WHITE} {url[:65]} — {str(e)[:35]}")
 
-    # ===== التشغيل =====
+    # ═══════════════════════════════════════════════════
+    # التشغيل
+    # ═══════════════════════════════════════════════════
     def run(self):
-        print(f"\n{C.CYAN}{'='*60}{C.WHITE}")
-        print(f"{C.BOLD}{C.CYAN}webbox v2.0 - سحب موقع كامل{C.WHITE}")
-        print(f"{C.CYAN}{'='*60}{C.WHITE}\n")
-        print(f"{C.BLUE}الهدف:{C.WHITE}      {self.start_url}")
-        print(f"{C.BLUE}المجلد:{C.WHITE}      {self.output_dir}")
-        print(f"{C.BLUE}العمق:{C.WHITE}       {self.max_depth}")
-        print(f"{C.BLUE}الحد:{C.WHITE}        {self.max_pages} صفحة\n")
+        print(f"\n{C.CYAN}{'═'*62}{C.WHITE}")
+        print(f"{C.BOLD}{C.CYAN}  webbox v2.1 - سحب موقع كامل{C.WHITE}")
+        print(f"{C.CYAN}{'═'*62}{C.WHITE}\n")
+        print(f"  {C.BLUE}الهدف:{C.WHITE}      {self.start_url}")
+        print(f"  {C.BLUE}المجلد:{C.WHITE}      {self.output_dir}")
+        print(f"  {C.BLUE}العمق:{C.WHITE}       {self.max_depth}")
+        print(f"  {C.BLUE}الحد:{C.WHITE}        {self.max_pages} صفحة\n")
 
         os.makedirs(self.output_dir, exist_ok=True)
         start = time.time()
@@ -282,7 +326,9 @@ class WebBox:
             "target": self.start_url,
             "domain": self.base_domain,
             "date": datetime.now().isoformat(),
+            "version": "2.1.0",
             "elapsed_seconds": round(elapsed, 2),
+            "is_spa": self.is_spa_site,
             "pages_downloaded": len(self.downloaded),
             "assets_downloaded": len(self.assets),
             "failed": len(self.failed),
@@ -300,15 +346,22 @@ class WebBox:
             json.dump(report, f, ensure_ascii=False, indent=2)
 
         # النتيجة
-        print(f"\n{C.CYAN}{'='*60}{C.WHITE}")
-        print(f"{C.BOLD}{C.GREEN}✅ انتهى{C.WHITE}")
-        print(f"{C.CYAN}{'='*60}{C.WHITE}")
-        print(f"{C.GREEN}صفحات:{C.WHITE}   {len(self.downloaded)}")
-        print(f"{C.GREEN}ملفات:{C.WHITE}   {len(self.assets)}")
-        print(f"{C.YELLOW}فشل:{C.WHITE}     {len(self.failed)}")
-        print(f"{C.CYAN}الوقت:{C.WHITE}   {elapsed:.1f}s")
-        print(f"{C.BLUE}المجلد:{C.WHITE}  {self.output_dir}")
-        print(f"{C.CYAN}{'='*60}{C.WHITE}\n")
+        print(f"\n{C.CYAN}{'═'*62}{C.WHITE}")
+        print(f"{C.BOLD}{C.GREEN}  ✅ انتهى{C.WHITE}")
+        print(f"{C.CYAN}{'═'*62}{C.WHITE}")
+        print(f"  {C.GREEN}صفحات:{C.WHITE}   {len(self.downloaded)}")
+        print(f"  {C.GREEN}ملفات:{C.WHITE}   {len(self.assets)}")
+        print(f"  {C.YELLOW}فشل:{C.WHITE}     {len(self.failed)}")
+        print(f"  {C.CYAN}الوقت:{C.WHITE}   {elapsed:.1f}s")
+
+        if self.is_spa_site:
+            print(f"\n  {C.YELLOW}⚠ ملاحظة: الموقع SPA "
+                  f"(React/Vue){C.WHITE}")
+            print(f"  {C.YELLOW}  المحتوى يُبنى بـ JavaScript "
+                  f"— webbox تسحب HTML فقط{C.WHITE}")
+
+        print(f"  {C.BLUE}المجلد:{C.WHITE}  {self.output_dir}")
+        print(f"{C.CYAN}{'═'*62}{C.WHITE}\n")
 
         return report
-PYEOF
+ENDOFFILE
