@@ -1,5 +1,5 @@
-cat > ~/webbox/requirements.txt << 'EOF'
+cat > requirements.txt << 'ENDOFFILE'
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 urllib3>=2.0.0
-EOF
+ENDOFFILE
