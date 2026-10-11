@@ -1,11 +1,11 @@
-cat > ~/webbox/webbox/cli.py << 'PYEOF'
+cat > webbox/cli.py << 'ENDOFFILE'
 #!/usr/bin/env python3
 """webbox CLI"""
 import sys
 from webbox.core import WebBox
 
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 
 HELP = """
@@ -82,4 +82,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-PYEOF
+ENDOFFILE
