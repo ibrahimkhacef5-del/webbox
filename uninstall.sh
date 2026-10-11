@@ -3,6 +3,6 @@ cat > ~/webbox/uninstall.sh << 'EOF'
 echo "🗑️  إزالة webbox..."
 rm -f "$PREFIX/bin/webbox" "$HOME/.local/bin/webbox"
 rm -rf "$HOME/.local/share/webbox"
-echo "✅ Ok"
+echo "✅ تم"
 EOF
 chmod +x ~/webbox/uninstall.sh
